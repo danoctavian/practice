@@ -1,6 +1,8 @@
 
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ImpredicativeTypes #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+
 module BinTree where
 
 import Prelude as P
@@ -10,10 +12,13 @@ import Data.Vector as DV
 import Control.Monad as CM
 import Control.Monad.Primitive
 import Data.Maybe
+import Data.List as DL
 
 import Utils
 
 -- general bin-tree stuff
+-- with zippers
+
 data BinTree a = Node { val :: a, leftT :: (BinTree a), rightT :: (BinTree a) } | Leaf { val :: a}
   deriving Show
 
@@ -135,8 +140,49 @@ insertOrd x tz
     Nothing -> modifyT (\old -> Node x old old) tz 
 
 
+
+isBalanced :: BinTree a -> Bool
+isBalanced = snd . heightBalance 
+  where    
+    heightBalance (Leaf _) = (1, True)
+    heightBalance (Node _ l r) = (max lHeight rHeight, lBalance && rBalance && (abs (lHeight - rHeight) <= 1))
+      where
+        (lHeight, lBalance) = heightBalance l
+        (rHeight, rBalance) = heightBalance r
+
+
+data Infinite a = MinInf | Only a | MaxInf
+  deriving (Show, Eq, Ord)
+
+inInterval x  (b, e) = b <= x && x <= e
+
+isBinSTree :: (Ord a) => BinTree a -> Bool
+isBinSTree t = isSTree t (MinInf, MaxInf)
+  where
+    isSTree (Leaf x) interval = inInterval (Only x) interval
+    isSTree (Node x l r) i@(b, e) = let infX = (Only x) in (inInterval infX i)
+                                  && (isSTree l (b, infX)) && (isSTree r (infX, e))
+
+-- alternative
+flatten (Leaf x) = [x]
+flatten (Node x l r) = (flatten l) P.++ (x : (flatten r))
+isOrdered xs = P.all id $ P.zipWith ( <= ) xs (P.tail xs)
+isBinSTree2 = isOrdered . flatten
+
+-- O(n + m)
+isSubTree :: (Eq a) => BinTree a -> BinTree a -> Bool
+isSubTree t bigT =   DL.isInfixOf (flatten t) (flatten bigT)
+
 binTree1 = Node "A" (Leaf "1") (Node "B" (Leaf "2") (Leaf "3"))
 binTree2 = Node "B" (Node "A" (Leaf "1") (Leaf "2"))  (Leaf "3")
+
+binSTree1 = Node 5 (Node 3 (Leaf 1) (Leaf 4))  (Leaf 6)
+
+
+sublists :: [a] ->[[a]]
+sublists xs = P.concatMap (\n -> prefixes $ P.drop n xs) [0.. P.length xs]
+
+prefixes xs = P.map (\n -> DL.take n xs) [1..P.length xs]
 
 root2 = (binTree2, ([], 0 :: Int))
 test1 = goBack (fromJust $ return root2 >>= goLeft) (fromJust $ return root2 >>= goRight)
